@@ -1,0 +1,23 @@
+{
+  "chunks": [
+    {
+      "text": "# JavaScript Notes JavaScript is a versatile programming language that was originally created for web browsers. Today, it is used for both client-side and server-side development. ## Key Features - **Dynamic Typing**: JavaScript is a dynamically typed language, meaning you don't need to specify variable types. - **Prototype-based**: JavaScript uses prototype-based inheritance instead of class-based inheritance. - **First-class Functions**: Functions in JavaScript are first-class citizens, meaning they can be assigned to variables and passed as arguments. ## Common Data Types JavaScript supports several data types including: 1. String - Text data 2. Number - Numeric data 3. Boolean - True or false values 4. Object - Complex data structures 5. Array - Ordered collections 6. null and undefined - Special values ## Arrays and Objects Arrays are zero-indexed collections that can hold any type of data. You can use methods like push(), pop(), map(), filter(), and reduce() to manipulate arrays. Objects are collections of key-value pairs. They are fundamental to JavaScript and are used to represent real-world entities.",
+      "source": "javascript-notes.md",
+      "wordCount": 168
+    },
+    {
+      "text": "# Node.js Notes Node.js is a runtime environment that allows you to run JavaScript on the server side. It is built on Chrome's V8 JavaScript engine and uses an event-driven, non-blocking I/O model. ## Why Node.js? - **Fast Performance**: Node.js uses V8 engine which compiles JavaScript to machine code. - **Scalable**: Non-blocking I/O makes it suitable for building scalable network applications. - **Unified Language**: You can use JavaScript for both frontend and backend development. ## Key Modules Node.js comes with several built-in modules: - **fs**: File system operations - **http**: Creating web servers - **path**: Path manipulation - **os**: Operating system information - **crypto**: Cryptographic functions ## Creating a Server To create a simple HTTP server in Node.js: ```javascript const http = require('http'); const server = http.createServer((req, res) => { res.writeHead(200); res.end('Hello World'); }); server.listen(3000); ``` ## NPM NPM (Node Package Manager) is the default package manager for Node.js. It allows you to install and manage dependencies for your projects.",
+      "source": "nodejs-notes.md",
+      "wordCount": 160
+    },
+    {
+      "text": "# Project Ideas Here are some project ideas to practice your coding skills: ## Beginner Projects 1. **Todo List Application**: Build a simple todo list where users can add, complete, and delete tasks. This helps practice CRUD operations. 2. **Weather App**: Create an application that fetches weather data from an API and displays it to users. 3. **Note Taking App**: Develop a note-taking application that allows users to create, edit, and delete notes. ## Intermediate Projects 4. **Chat Application**: Build a real-time chat application using WebSockets. 5. **Blog Platform**: Create a full-featured blog with user authentication, comments, and categories. 6. **E-commerce Store**: Develop a simple online store with product listings, shopping cart, and checkout functionality. ## Advanced Projects 7. **Social Media Dashboard**: Build a dashboard that aggregates data from multiple social media platforms. 8. **AI Chatbot**: Create an intelligent chatbot that can answer questions using natural language processing. 9. **Real-time Collaboration Tool**: Develop a tool that allows multiple users to work on the same document simultaneously.",
+      "source": "project-ideas.md",
+      "wordCount": 166
+    }
+  ],
+  "metadata": {
+    "totalChunks": 3,
+    "processedAt": "2026-03-28T18:47:21.308Z"
+  }
+}
