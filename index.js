@@ -1,145 +1,133 @@
-const express = require('express');
+/**
+ * Smart Notes MVP - Main Entry Point
+ * A modular, offline-first RAG system for local notes
+ */
+
 const path = require('path');
-const NoteChunker = require('./chunker');
-const Retriever = require('./retriever');
-const OllamaClient = require('./ollama');
+const VaultStorage = require('./src/storage');
+const Indexer = require('./src/indexing');
+const Retriever = require('./src/retrieval');
+const AIClient = require('./src/ai');
+const VaultWatcher = require('./src/watcher');
+const Server = require('./src/server');
 
-const app = express();
-app.use(express.json());
+class SmartNotes {
+    constructor() {
+        this.baseDir = path.join(__dirname);
+        this.vaultPath = path.join(this.baseDir, 'vault');
+        this.dbPath = path.join(this.baseDir, 'db.json');
+        this.publicDir = path.join(this.baseDir, 'public');
 
-const PORT = process.env.PORT || 3000;
-const NOTES_DIR = path.join(__dirname, 'notes');
-const DB_PATH = path.join(__dirname, 'db.json');
-const PUBLIC_DIR = path.join(__dirname, 'public');
+        this.storage = new VaultStorage(this.vaultPath);
+        this.indexer = new Indexer({ minWords: 150, maxWords: 200 });
+        this.retriever = new Retriever({ topK: 3 });
+        this.ai = new AIClient({ model: 'qwen2.5-coder:1.5b' });
+        
+        this.watcher = new VaultWatcher({
+            vaultPath: this.vaultPath,
+            onChange: (event, filename) => this.handleFileChange(event, filename)
+        });
 
-app.use(express.static(PUBLIC_DIR));
+        this.server = new Server(
+            {
+                storage: this.storage,
+                indexer: this.indexer,
+                retriever: this.retriever,
+                ai: this.ai,
+                watcher: this.watcher
+            },
+            {
+                port: process.env.PORT || 3000,
+                publicDir: this.publicDir
+            }
+        );
+    }
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
-});
+    /**
+     * Handles file changes detected by the watcher
+     * @param {string} event - Event type (added, modified, deleted)
+     * @param {string} filename - Changed file name
+     */
+    async handleFileChange(event, filename) {
+        console.log(`File ${event}: ${filename} - Reindexing...`);
+        await this.reindex();
+    }
 
-const chunker = new NoteChunker(150, 200);
-const retriever = new Retriever(3);
-const ollama = new OllamaClient();
+    /**
+     * Reindexes all notes from the vault
+     */
+    async reindex() {
+        try {
+            const notes = await this.storage.readAllNotes();
+            const chunks = this.indexer.processNotes(notes);
+            await this.indexer.saveChunks(chunks, this.dbPath);
+            this.server.setChunks(chunks);
+            console.log(`Reindexed ${chunks.length} chunks from ${notes.length} notes`);
+        } catch (error) {
+            console.error('Reindex error:', error);
+        }
+    }
 
-let chunks = [];
+    /**
+     * Loads existing chunks from database
+     */
+    async loadChunks() {
+        return await this.indexer.loadChunks(this.dbPath);
+    }
 
-async function processNotes() {
-    console.log('Processing notes...');
-    try {
-        chunks = await chunker.processNotes(NOTES_DIR);
-        await chunker.saveChunks(chunks, DB_PATH);
-        console.log(`Processed ${chunks.length} chunks from notes`);
-    } catch (error) {
-        console.error('Error processing notes:', error);
-        chunks = await chunker.loadChunks(DB_PATH);
+    /**
+     * Starts the Smart Notes application
+     */
+    async start() {
+        console.log('═══════════════════════════════════════');
+        console.log('        Smart Notes MVP - Starting');
+        console.log('═══════════════════════════════════════\n');
+
+        await this.storage.ensureVaultExists();
+
+        const ollamaConnected = await this.ai.checkConnection();
+        if (ollamaConnected) {
+            console.log('✓ Ollama server is running');
+        } else {
+            console.warn('✗ Ollama server is not running');
+            console.warn('  Start with: ollama serve\n');
+        }
+
+        let chunks = await this.loadChunks();
+        
         if (chunks.length === 0) {
-            console.error('No chunks found in db.json');
-        }
-    }
-}
-
-app.post('/ask', async (req, res) => {
-    try {
-        const { question } = req.body;
-
-        if (!question || question.trim() === '') {
-            return res.status(400).json({ 
-                error: 'Question is required' 
-            });
+            console.log('No existing index found, creating initial index...');
+            await this.reindex();
+            chunks = await this.loadChunks();
+        } else {
+            console.log(`✓ Loaded ${chunks.length} chunks from database`);
         }
 
-        console.log(`\nReceived question: ${question}`);
+        this.server.setChunks(chunks);
 
-        const relevantChunks = retriever.retrieve(question, chunks);
+        await this.server.start();
 
-        if (relevantChunks.length === 0) {
-            return res.json({
-                answer: 'I don\'t know. No relevant information found in the notes.',
-                sources: []
-            });
-        }
-
-        console.log(`Found ${relevantChunks.length} relevant chunks`);
-
-        const context = retriever.buildContext(relevantChunks);
-        const answer = await ollama.generate(question, context);
-
-        const sources = relevantChunks.map(chunk => chunk.source);
-
-        console.log(`Answer: ${answer.substring(0, 100)}...`);
-
-        res.json({
-            answer: answer,
-            sources: [...new Set(sources)]
-        });
-
-    } catch (error) {
-        console.error('Error processing question:', error);
-        res.status(500).json({ 
-            error: error.message || 'Internal server error' 
-        });
-    }
-});
-
-app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'ok',
-        chunksLoaded: chunks.length 
-    });
-});
-
-app.get('/sources', (req, res) => {
-    const sources = [...new Set(chunks.map(c => c.source))];
-    res.json({ sources });
-});
-
-app.get('/chunks', (req, res) => {
-    res.json({ 
-        total: chunks.length,
-        chunks: chunks 
-    });
-});
-
-app.post('/reindex', async (req, res) => {
-    try {
-        await processNotes();
-        res.json({ 
-            message: 'Notes reindexed successfully',
-            chunksLoaded: chunks.length 
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            error: error.message 
-        });
-    }
-});
-
-async function startServer() {
-    console.log('Smart Notes MVP - Starting...\n');
-    
-    const isOllamaRunning = await ollama.checkConnection();
-    if (isOllamaRunning) {
-        console.log('Ollama server is running');
-    } else {
-        console.warn('Ollama server is not running. Questions will fail until Ollama is started.');
-        console.warn('Start Ollama with: ollama serve\n');
-    }
-
-    await processNotes();
-
-    app.listen(PORT, () => {
-        console.log(`\nServer running at http://localhost:${PORT}`);
         console.log('\nEndpoints:');
-        console.log('  POST /ask       - Ask a question about your notes');
-        console.log('  GET  /health     - Check server health');
-        console.log('  GET  /sources    - List all note sources');
-        console.log('  GET  /chunks     - View all chunks');
-        console.log('  POST /reindex    - Reprocess notes\n');
-    });
+        console.log('  GET  /              - Web interface');
+        console.log('  POST /api/ask       - Ask questions');
+        console.log('  GET  /api/health    - Server health');
+        console.log('  GET  /api/sources   - List notes');
+        console.log('  GET  /api/chunks    - View chunks');
+        console.log('  POST /api/reindex   - Reindex notes');
+        console.log('  GET  /api/notes     - List notes (detailed)');
+        console.log('  POST /api/notes     - Create note');
+        console.log('\nFile watching enabled for automatic reindexing\n');
+
+        process.on('SIGINT', () => {
+            console.log('\nShutting down...');
+            this.server.stop();
+            process.exit(0);
+        });
+    }
 }
 
-startServer().catch(error => {
-    console.error('Failed to start server:', error);
+const app = new SmartNotes();
+app.start().catch(error => {
+    console.error('Failed to start Smart Notes:', error);
     process.exit(1);
 });
